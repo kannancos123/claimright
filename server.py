@@ -555,7 +555,7 @@ function getSidebarScenario() {
   return val || null;
 }
 
-async function sendMessage() {
+function sendMessage() {
   const input = document.getElementById('input');
   const text = input.value.trim();
   if (!text) return;
@@ -565,41 +565,38 @@ async function sendMessage() {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('send').disabled = true;
 
-  try {
-    const resp = await fetch(API + '/chat', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        message: text,
-        state: state,
-        scenario: scenario,
-        policy_type: policyType,
-        location: locationVal,
-      })
-    });
+  fetch(API + '/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      message: text,
+      state: state,
+      scenario: scenario,
+      policy_type: policyType,
+      location: locationVal,
+    })
+  })
+  .then(async (resp) => {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     addMessage('assistant', data.response);
-    
     state = data.state;
     if (data.scenario) scenario = data.scenario;
     if (data.policy_type) policyType = data.policy_type;
     if (data.location) locationVal = data.location;
-  } catch (err) {
+  })
+  .catch((err) => {
     addMessage('assistant', `⚠️ Error: ${err.message}`);
-  } finally {
+  })
+  .finally(() => {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('send').disabled = false;
-  }
+  });
 }
 
 function quickAsk(question) {
   document.getElementById('input').value = question;
-  quickSendMessage();
-}
-
-async function quickSendMessage() {
-  await sendMessage();
+  sendMessage();
 }
 
 function onScenarioChange() {
@@ -611,9 +608,21 @@ function onScenarioChange() {
     state = 'collecting_policy';
     document.getElementById('policy_type').value = '';
     document.getElementById('location').value = '';
-    // Send the selected scenario as a message
-    document.getElementById('input').value = '';
-    quickSendMessage();
+    // Send the selected scenario as a message so the backend knows
+    const scenarioNames = {
+      'own_damage': 'I had an accident / vehicle collision',
+      'theft': 'My vehicle was stolen',
+      'third_party': 'Third party damage / injury',
+      'natural_calamity': 'Natural calamity (flood / cyclone / earthquake)',
+      'hit_and_run': 'Hit and run',
+      'denied_claim': 'My claim was denied',
+      'ncb': 'I want to know about No Claim Bonus',
+      'cashless_reimbursement': 'Cashless vs reimbursement',
+      'surveyor_dispute': 'Surveyor assessment dispute',
+      'total_loss': 'Total loss / write-off',
+    };
+    document.getElementById('input').value = scenarioNames[val] || val;
+    sendMessage();
   }
 }
 
@@ -626,10 +635,30 @@ async function resetChat() {
   scenario = null;
   policyType = null;
   locationVal = null;
-  
+
+  document.getElementById('scenario').value = '';
+  document.getElementById('policy_type').value = '';
   document.getElementById('messages').innerHTML = '';
-  
-  addMessage('assistant', "🚗 **New conversation started.** Please describe your insurance situation or select a claim type from the sidebar.");
+
+  try {
+    const resp = await fetch(API + '/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        message: 'start over',
+        state: 'greeting',
+        scenario: null,
+        policy_type: null,
+        location: null,
+      })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      addMessage('assistant', data.response);
+    }
+  } catch {
+    addMessage('assistant', '🚗 **New conversation started.** Please describe your insurance situation or select a claim type from the sidebar.');
+  }
 }
 
 async function generateSummary() {
@@ -648,7 +677,7 @@ async function generateSummary() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         message: 'Generate a summary of my claim',
-        state: state,
+        state: 'providing_info',
         scenario: scen,
         policy_type: pol,
         location: loc,
