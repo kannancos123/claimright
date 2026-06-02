@@ -19,8 +19,59 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from bot import classify_incident, get_relevant_knowledge, load_kb_json, DISCLAIMER
-from knowledge import load_kb_json as kb_load
+# Logic is inlined below; no external modules needed
+DISCLAIMER = "⚠️ **Disclaimer:** This guide is for informational purposes only based on IRDAI regulations. It does not constitute legal advice. Please consult your insurer or a legal professional for your specific claim."
+
+def classify_incident(text: str):
+    return detect_scenario_from_text(text)
+
+def get_relevant_knowledge(scenario: str):
+    relevance = {
+        "own_damage": ["Own Damage Coverage", "Claim Process", "Surveyor Assessment"],
+        "theft": ["Theft Claim Process", "FIR Requirements", "Documentation"],
+        "third_party": ["Third-Party Coverage", "MACT Tribunal", "Legal Requirements"],
+        "natural_calamity": ["Natural Calamity Coverage", "Storm/Flood Claims", "Documentation"],
+        "hit_and_run": ["Hit-and-Run Claims", "FIR Requirements", "Insurance Coverage"],
+        "denied_claim": ["Claim Denial", "Appeal Process", "SCORES Portal"],
+        "ncb": ["No Claim Bonus", "Discounts", "Policy Transfer"],
+        "cashless_reimbursement": ["Cashless Claims", "Reimbursement Process", "Network Garages"],
+        "surveyor_dispute": ["Surveyor Assessment", "Dispute Process", "Independent Estimates"],
+        "total_loss": ["Total Loss", "Write-Off Process", "Depreciation"],
+    }
+    return relevance.get(scenario, ["General Claim Guidance"])
+
+_knowledge_data = {
+    "Own Damage Coverage": """## Own Damage Coverage\nOwn Damage (OD) covers damage to your own vehicle due to:\n- Accidents and collisions\n- Fire, explosion, or self-ignition\n- Natural calamities (flood, cyclone, earthquake, etc.)\n- Theft\n- Riots and strikes\n- Damage while in transit by road/rail/air/water\n\n**Exclusions:** Normal wear and tear, mechanical/electrical failure, damage while driving under influence, depreciation deductions.""",
+    "Claim Process": """## Claim Process\n1. **Intimate Insurer** — Within 24-48 hours (immediate for theft)\n2. **File FIR** — Required for theft, third-party, hit-and-run\n3. **Submit Documents** — Claim form, RC, policy, driving license\n4. **Surveyor Assessment** — Insurer evaluates damage\n5. **Repair** — Cashless (network garage) or reimbursement (your garage)\n6. **Settlement** — IRDAI mandates within 30 days of document submission""",
+    "Theft Claim Process": """## Theft Claim Process\n1. **File FIR** — Within 24 hours at nearest police station\n2. **Notify Insurer** — Call helpline immediately (24/7)\n3. **Submit Documents** — FIR, claim form, RC, policy, driving license\n4. **Surveyor Inspection** — Insurer verifies the claim\n5. **Settlement** — Within 30 days after document submission\n\n**Key Tips:** File FIR within 24 hours. Keep all copies. Follow up regularly.""",
+    "FIR Requirements": """## FIR Requirements\nFIR (First Information Report) is mandatory for:\n- Theft claims\n- Third-party injury/death claims\n- Hit-and-run claims\n- Claims involving third-party property damage\n\n**How to file:** Visit nearest police station with vehicle registration details, insurance documents, and incident details.""",
+    "Third-Party Coverage": """## Third-Party Coverage\nMandatory by law. Covers:\n- Third-party property damage\n- Third-party bodily injury/death\n- Legal liabilities under motor vehicle act\n\n**Does NOT cover:** Your own vehicle's damage.\n\nFor own-damage coverage, you need **Comprehensive Insurance** (adds own-damage + third-party + optional add-ons).""",
+    "Documentation": """## Required Documentation\n1. Duly filled claim form\n2. Original insurance policy document\n3. RC (Registration Certificate) copy\n4. Driving license copy\n5. FIR copy (if applicable)\n6. Repair estimates/invoices\n7. Photos of damage\n8. No Objection Certificate (if vehicle is on loan)""",
+    "MACT Tribunal": """## MACT Tribunal\nMotor Accidents Claims Tribunal handles third-party claims:\n- Claims can be filed within 8 months of incident\n- Tribunal determines compensation based on severity\n- Third party must file the claim, not the insurer\n- Legal representation is recommended""",
+    "Natural Calamity Coverage": """## Natural Calamity Coverage\nCovered under comprehensive policies:\n- Flood, cyclone, earthquake, storm, landslide, rockslide\n- Must be of a 'natural' cause\n\n**Documentation needed:**\n- Photos/videos of damage\n- Police/complaint confirmation\n- Repair estimates\n- Insurance claim form""",
+    "Hit-and-Run Claims": """## Hit-and-Run Claims\n**Mandatory:** File FIR immediately\n\n**Process:**\n1. File FIR — absolutely mandatory\n2. Intimate insurer within 24 hours\n3. Submit FIR copy as primary evidence\n4. Surveyor assessment\n5. Settlement based on comprehensive coverage\n\n**Note:** Own damage covered only under comprehensive policy. Third-party damage from hit-and-run can be claimed through Motor Accident Claims Tribunal.""",
+    "Claim Denial": """## Claim Denial Process\n**Common reasons for denial:**\n- Delayed intimation to insurer\n- Expired or lapsed policy\n- Missing or incomplete documents\n- Driving without valid license\n- Vehicle used for unauthorized purposes\n\n**Appeal steps:**\n1. Request written denial letter\n2. Review denial reasons\n3. Submit counter-evidence\n4. Appeal to insurer within 30 days\n5. Escalate to SCORES portal if unresolved""",
+    "SCORES Portal": """## SCORES Portal\nIRDAI's online grievance redressal system.\n\n**Steps:**\n1. Visit scores.irdai.gov.in\n2. Register with PAN and policy details\n3. File complaint against insurer\n4. IRDAI mandates resolution within 30 days\n5. If unresolved, approach Consumer Forum\n\n**IRDAI Helpline:** 1700-13-13-13""",
+    "No Claim Bonus": """## No Claim Bonus (NCB)\nDiscount on own-damage premium for claim-free years:\n- 1 year: 20% | 2 years: 25% | 3 years: 35%\n- 4 years: 45% | 5+ years: 50% maximum\n\n**Key Points:**\n- Applies to own-damage portion only\n- Transferable between insurers\n- Lost if you make a claim (except exemptions)\n- Can be preserved for 2 years without a car""",
+    "Discounts": """## NCB Discounts\nMaximum NCB discount is 50% after 5 consecutive claim-free years. The discount is applied only on the own-damage premium, not on the third-party premium.\n\n**NCB Protection:** Can be protected for one claim in 5 years (add-on rider available).""",
+    "Cashless Claims": """## Cashless Claims\n**Process:**\n1. Drive/transport vehicle to insurer's network garage\n2. Fill cashless claim form\n3. Insurer authorizes repair after surveyor inspection\n4. Vehicle repaired, insurer pays garage directly\n5. No upfront payment required\n\n**Advantages:** No out-of-pocket expense, faster process.\n\n**Limitation:** Must be at a network garage.""",
+    "Reimbursement Process": """## Reimbursement Process\n**Process:**\n1. Get vehicle repaired at any garage\n2. Submit all documents to insurer\n3. Insurer processes and approves amount\n4. Reimbursement credited to your account\n\n**Documents:** All invoices, repair estimates, photos, claim form.""",
+    "Surveyor Assessment": """## Surveyor Assessment\n**What to expect:**\n- Insurer sends a surveyor to evaluate damage\n- Surveyor prepares assessment report\n- Report determines repair costs\n\n**If you disagree:**\n1. Get independent estimates\n2. Submit counter-evidence\n3. File written dispute with insurer\n4. Escalate to SCORES if unresolved""",
+    "Policy Transfer": """## NCB Policy Transfer\nWhen switching insurers:\n1. Request NCB carry-forward letter from old insurer\n2. Submit to new insurer at policy renewal\n3. NCB discount applied automatically\n\n**Note:** NCB is preserved for up to 2 years after policy expiry. Act within this window.""",
+    "Legal Requirements": """## Legal Requirements for Third-Party Claims\n- FIR is mandatory for injury/death claims\n- Claims must be filed at MACT within 8 months\n- Do NOT admit liability at the scene\n- Collect witness details and photos\n- Consult a lawyer for injury/death claims""",
+    "Storm/Flood Claims": """## Storm/Flood Claims\n**Coverage:** Included in comprehensive policies\n**Exclusions:** Claims from non-disclosed flood zones may be disputed\n\n**Key steps:**\n1. Document damage with dated photos\n2. Notify insurer within 24 hours\n3. File FIR if applicable\n4. Submit claim with documentation\n5. Wait for surveyor assessment""",
+    "Insurance Coverage": """## Insurance Coverage Basics\n**Third-Party Only:** Mandatory minimum. Covers only damage to others.\n\n**Comprehensive:** Covers own-damage + third-party + optional add-ons:\n- Engine protect (cover)\n- Zero depreciation\n- Roadside assistance\n- Return to invoice\n- Consumables cover""",
+    "Dispute Process": """## Dispute Resolution Process\n1. Get assessment report from insurer's surveyor\n2. Review findings carefully\n3. Get independent estimate\n4. File written dispute within 15 days\n5. Submit counter-evidence\n6. Escalate through insurer's grievance\n7. If unresolved, file on SCORES portal""",
+    "Independent Estimates": """## Getting Independent Estimates\n1. Visit 2-3 IRDAI-approved garages\n2. Request detailed estimates\n3. Compare with insurer's assessment\n4. Submit to insurer as counter-evidence\n5. Include dated photos of damage""",
+    "Total Loss": """## Total Loss (Write-Off)\n**Criteria:** If repair cost exceeds 75% of insured declared value (IDV), insurer may declare total loss.\n\n**Settlement Options:**\n1. Full settlement — insurer pays IDV, takes ownership\n2. Salvage retention — keep vehicle, get reduced settlement\n\n**Depreciation:** Standard deductions apply:\n- Plastic parts: 50%\n- Rubber/nylon/pneumatic: 50%\n- Metal parts: 0-20%\n- Engine: 5-15%""",
+    "Write-Off Process": """## Total Loss Process\n1. Insurer declares total loss based on assessment\n2. Settlement options presented to policyholder\n3. Depreciation deductions calculated\n4. Settlement amount determined\n5. Review carefully before signing\n6. For vehicles <1 year old, depreciation is minimal""",
+    "General Claim Guidance": """## General Claim Guidance\nAlways:\n- Intimate insurer within 24-48 hours\n- File FIR when required\n- Collect and preserve evidence\n- Follow up regularly\n- Keep copies of all documents\n\nDo NOT:\n- Admit liability at the scene\n- Start repairs before surveyor inspection\n- Lose any original documents""",
+    "Depreciation": """## Understanding Depreciation in Claims\nDepreciation is deducted from your claim amount based on vehicle age:\n- Vehicle < 6 months: 0% depreciation\n- 6-12 months: 5%\n- 1-2 years: 10%\n- 2-3 years: 15%\n- 3-5 years: 20%\n- 5+ years: Up to 50% for certain parts\n\n**Add-on:** Zero Depreciation cover eliminates these deductions (higher premium).""",
+}
+
+def load_kb_json():
+    return _knowledge_data
+kb_load = load_kb_json
 
 app = FastAPI(title="ClaimRight", version="0.1.0")
 
