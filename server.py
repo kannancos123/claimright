@@ -468,13 +468,13 @@ UI_HTML = """
   .btn-primary:hover { background: #1a5276; }
   .btn-secondary { background: #333; color: #ccc; }
   .btn-secondary:hover { background: #444; }
-  .chat-area { margin-left: 260px; display: flex; flex-direction: column; height: 100vh; }
+  .chat-area { margin-left: 260px; display: flex; flex-direction: column; min-height: 100dvh; height: 100%; }
   .chat-area .header { margin-left: -260px; }
-  #messages { flex: 1; overflow-y: auto; padding: 20px; }
+  #messages { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 8px; }
   .msg { max-width: 75%; margin-bottom: 12px; padding: 12px 16px; border-radius: 16px; font-size: 0.95em; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
   .msg.user { background: #0f3460; color: white; margin-left: auto; border-bottom-right-radius: 4px; }
   .msg.assistant { background: white; border: 1px solid #e0e0e0; margin-right: auto; border-bottom-left-radius: 4px; }
-  .input-area { padding: 16px 20px; background: white; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
+  .input-area { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); background: white; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; }
   #input { flex: 1; padding: 12px 16px; border: 1px solid #ddd; border-radius: 24px; font-size: 1em; outline: none; }
   #input:focus { border-color: #0f3460; }
   #send { padding: 12px 24px; background: #0f3460; color: white; border: none; border-radius: 24px; cursor: pointer; font-size: 1em; font-weight: 600; }
@@ -494,6 +494,9 @@ UI_HTML = """
     .sidebar { display: none; }
     .chat-area { margin-left: 0; }
     .msg { max-width: 90%; }
+    .input-area { padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    #input { padding: 10px 14px; font-size: 16px; }
+    #send { padding: 10px 18px; font-size: 0.95em; }
   }
 </style>
 </head>
@@ -572,7 +575,7 @@ UI_HTML = """
 </div>
 
 <script>
-const API = '';
+const API = '/';
 let state = 'greeting';
 let scenario = null;
 let policyType = null;
@@ -616,7 +619,7 @@ function sendMessage() {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('send').disabled = true;
 
-  fetch(API + '/chat', {
+  fetch(API + 'chat', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
@@ -692,7 +695,7 @@ async function resetChat() {
   document.getElementById('messages').innerHTML = '';
 
   try {
-    const resp = await fetch(API + '/chat', {
+    const resp = await fetch(API + 'chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -723,7 +726,7 @@ async function generateSummary() {
   }
   
   try {
-    const resp = await fetch(API + '/chat', {
+    const resp = await fetch(API + 'chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -745,7 +748,7 @@ async function generateSummary() {
 async function checkHealth() {
   const el = document.getElementById('health_status');
   try {
-    const r = await fetch(API + '/health');
+    const r = await fetch(API + 'health');
     if (r.ok) {
       el.innerHTML = '<span class="dot green"></span> Backend Connected';
     } else {
@@ -767,10 +770,28 @@ checkHealth();
 def handler(event, context):
     from fastapi.responses import JSONResponse, Response
 
-    if event["httpMethod"] == "GET" and event["path"] in ["/", "/app"]:
+    path = event.get("path", "")
+    method = event.get("httpMethod", "GET")
+
+    if method == "GET" and path in ["/", "/app"]:
         return Response(content=UI_HTML, media_type="text/html", status_code=200)
 
-    if event.get("path") == "/health" and event["httpMethod"] == "GET":
+    if method == "POST" and path == "/chat":
+        # Parse the body
+        import json as _json
+        body = _json.loads(event.get("body", '{}')) if event.get("body") else {}
+        from pydantic import ValidationError
+        try:
+            req = ChatRequest(**body)
+            result = process_message(req.message, req.state, req.scenario, req.policy_type, req.location)
+            resp = ChatResponse(**result)
+            return JSONResponse(content=resp.model_dump(), status_code=200)
+        except ValidationError as e:
+            return JSONResponse(content={"error": str(e)}, status_code=400)
+        except Exception as e:
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+
+    if method == "GET" and path == "/health":
         return JSONResponse(content={"status": "healthy", "service": "ClaimRight"}, status_code=200)
 
     return JSONResponse(content={"error": "not found"}, status_code=404)
